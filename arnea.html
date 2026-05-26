@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>胜场概率分布计算器</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #19202a;
+        --muted: #5d6675;
+        --line: #d9dee7;
+        --panel: #ffffff;
+        --surface: #f5f7fb;
+        --teal: #087f8c;
+        --teal-soft: #dff4f6;
+        --green: #2d7a46;
+        --shadow: 0 18px 50px rgba(37, 45, 66, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "Microsoft YaHei", sans-serif;
+        color: var(--ink);
+        background:
+          linear-gradient(180deg, rgba(8, 127, 140, 0.09), transparent 340px),
+          var(--surface);
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .app-shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 34px 0 44px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 430px);
+        gap: 22px;
+        align-items: stretch;
+        margin-bottom: 20px;
+      }
+
+      .title-block,
+      .control-panel,
+      .metric,
+      .table-panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      .title-block {
+        padding: 30px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 245px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 4.35rem);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        max-width: 720px;
+        margin: 20px 0 0;
+        color: var(--muted);
+        font-size: 1.03rem;
+        line-height: 1.7;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 28px;
+      }
+
+      .chip {
+        min-height: 32px;
+        padding: 6px 10px;
+        border: 1px solid #cbd3df;
+        border-radius: 999px;
+        color: #334052;
+        background: #f8fafc;
+        font-size: 0.9rem;
+        white-space: nowrap;
+      }
+
+      .control-panel {
+        padding: 22px;
+        display: grid;
+        gap: 18px;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .control-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 14px;
+        align-items: end;
+      }
+
+      .eyebrow {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.83rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .rate-display {
+        min-width: 0;
+        max-width: 100%;
+        color: var(--teal);
+        font-size: 2.35rem;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: 0;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .input-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 116px;
+        gap: 12px;
+        align-items: end;
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+        color: #354154;
+        font-size: 0.92rem;
+        font-weight: 700;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--teal);
+      }
+
+      input[type="number"] {
+        width: 100%;
+        height: 42px;
+        border: 1px solid #bdc7d5;
+        border-radius: 6px;
+        padding: 0 10px;
+        color: var(--ink);
+        background: #fff;
+      }
+
+      input[type="number"]:focus {
+        border-color: var(--teal);
+        outline: 3px solid rgba(8, 127, 140, 0.16);
+      }
+
+      .quick-rates {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .quick-rates button,
+      .copy-link {
+        min-width: 0;
+        min-height: 38px;
+        border: 1px solid #c4cedb;
+        border-radius: 6px;
+        color: #243044;
+        background: #fff;
+        cursor: pointer;
+      }
+
+      .quick-rates button:hover,
+      .copy-link:hover {
+        border-color: var(--teal);
+        background: var(--teal-soft);
+      }
+
+      .copy-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        min-width: 0;
+      }
+
+      .copy-link {
+        padding: 0 12px;
+        white-space: nowrap;
+      }
+
+      .current-url {
+        display: flex;
+        align-items: center;
+        height: 38px;
+        min-width: 0;
+        padding: 0 10px;
+        border: 1px solid #d7dee9;
+        border-radius: 6px;
+        color: var(--muted);
+        background: #f8fafc;
+        font-size: 0.84rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-bottom: 20px;
+      }
+
+      .metric {
+        min-height: 132px;
+        padding: 18px;
+        box-shadow: none;
+      }
+
+      .metric-label {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 0.88rem;
+        font-weight: 700;
+      }
+
+      .metric-value {
+        margin: 0;
+        color: var(--ink);
+        font-size: clamp(1.55rem, 2vw, 2.2rem);
+        font-weight: 800;
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      .metric-note {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+
+      .main-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+      }
+
+      .table-panel {
+        box-shadow: none;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1.08rem;
+        letter-spacing: 0;
+      }
+
+      .total-prob {
+        color: var(--muted);
+        font-size: 0.9rem;
+        white-space: nowrap;
+      }
+
+      .distribution {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 12px 20px;
+        border-bottom: 1px solid #edf0f5;
+        text-align: right;
+        vertical-align: middle;
+      }
+
+      th {
+        color: #526071;
+        background: #fafbfd;
+        font-size: 0.82rem;
+        font-weight: 800;
+      }
+
+      th:first-child,
+      td:first-child {
+        text-align: left;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .result-name {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        gap: 8px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 54px;
+        height: 28px;
+        padding: 0 8px;
+        border-radius: 999px;
+        color: #103b42;
+        background: var(--teal-soft);
+        font-size: 0.82rem;
+      }
+
+      .bar-cell {
+        width: 36%;
+        min-width: 170px;
+      }
+
+      .bar {
+        position: relative;
+        height: 12px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e6ebf2;
+      }
+
+      .bar span {
+        display: block;
+        width: calc(var(--pct, 0) * 1%);
+        height: 100%;
+        border-radius: inherit;
+        background: var(--teal);
+      }
+
+      .probability {
+        font-variant-numeric: tabular-nums;
+        font-weight: 750;
+      }
+
+      .highlight {
+        color: var(--green);
+        font-weight: 800;
+      }
+
+      @media (max-width: 920px) {
+        .hero,
+        .main-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .metrics {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .app-shell {
+          width: min(100% - 20px, 1180px);
+          padding: 16px 0 28px;
+        }
+
+        .title-block,
+        .control-panel {
+          padding: 18px;
+        }
+
+        .title-block {
+          min-height: auto;
+        }
+
+        .subtitle {
+          font-size: 0.96rem;
+        }
+
+        .input-grid,
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+
+        .quick-rates {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .copy-row {
+          grid-template-columns: 1fr;
+          align-items: stretch;
+        }
+
+        .copy-link {
+          width: 100%;
+        }
+
+        .control-head {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .rate-display {
+          text-align: left;
+          font-size: 2rem;
+        }
+
+        .table-panel {
+          overflow-x: auto;
+        }
+
+        .distribution {
+          min-width: 680px;
+        }
+
+        th,
+        td {
+          padding: 11px 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="title-block">
+          <div>
+            <p class="eyebrow">Probability calculator</p>
+            <h1 id="page-title">胜场概率分布</h1>
+            <p class="subtitle">
+              失败 3 次结束，最多 12 胜。页面会分别统计 12胜0负、12胜1负、12胜2负，并给出净胜场次期望值。
+            </p>
+          </div>
+          <div class="chips" aria-label="规则摘要">
+            <span class="chip">失败 3 次结束</span>
+            <span class="chip">最多 12 胜</span>
+            <span class="chip">独立单局胜率</span>
+            <span class="chip">净胜 = 胜场 - 负场</span>
+          </div>
+        </div>
+
+        <section class="control-panel" aria-label="胜率设置">
+          <div class="control-head">
+            <p class="eyebrow">单局胜率</p>
+            <output class="rate-display" id="rateDisplay" for="rateInput rateSlider">50.00%</output>
+          </div>
+
+          <div class="input-grid">
+            <label>
+              胜率滑杆
+              <input id="rateSlider" type="range" min="0" max="100" step="0.01" value="50" />
+            </label>
+            <label>
+              百分比
+              <input id="rateInput" type="number" min="0" max="100" step="0.01" value="50" inputmode="decimal" />
+            </label>
+          </div>
+
+          <div class="quick-rates" aria-label="常用胜率">
+            <button type="button" data-rate="40">40%</button>
+            <button type="button" data-rate="50">50%</button>
+            <button type="button" data-rate="55">55%</button>
+            <button type="button" data-rate="60">60%</button>
+          </div>
+
+          <div class="copy-row">
+            <button class="copy-link" type="button" id="copyLink">复制当前链接</button>
+            <span class="current-url" id="currentUrl"></span>
+          </div>
+        </section>
+      </section>
+
+      <section class="metrics" aria-label="核心指标">
+        <article class="metric">
+          <p class="metric-label">净胜场次期望值</p>
+          <p class="metric-value" id="expectedNet">0.0000</p>
+          <p class="metric-note">每种结局按概率加权后的胜负差。</p>
+        </article>
+        <article class="metric">
+          <p class="metric-label">期望胜场</p>
+          <p class="metric-value" id="expectedWins">0.0000</p>
+          <p class="metric-note">实际结束时的平均胜场数。</p>
+        </article>
+        <article class="metric">
+          <p class="metric-label">期望负场</p>
+          <p class="metric-value" id="expectedLosses">0.0000</p>
+          <p class="metric-note">实际结束时的平均负场数。</p>
+        </article>
+        <article class="metric">
+          <p class="metric-label">达成 12 胜概率</p>
+          <p class="metric-value" id="twelveWinChance">0.0000%</p>
+          <p class="metric-note">12胜0负、12胜1负、12胜2负合计。</p>
+        </article>
+      </section>
+
+      <section class="main-grid">
+        <section class="table-panel" aria-labelledby="table-title">
+          <div class="panel-head">
+            <h2 id="table-title">结果概率分布</h2>
+            <span class="total-prob" id="totalProbability">合计 100.0000%</span>
+          </div>
+          <table class="distribution">
+            <thead>
+              <tr>
+                <th scope="col">结果</th>
+                <th scope="col">净胜</th>
+                <th scope="col">概率</th>
+                <th scope="col">分布</th>
+              </tr>
+            </thead>
+            <tbody id="distributionBody"></tbody>
+          </table>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const slider = document.querySelector("#rateSlider");
+      const input = document.querySelector("#rateInput");
+      const rateDisplay = document.querySelector("#rateDisplay");
+      const distributionBody = document.querySelector("#distributionBody");
+      const expectedNetEl = document.querySelector("#expectedNet");
+      const expectedWinsEl = document.querySelector("#expectedWins");
+      const expectedLossesEl = document.querySelector("#expectedLosses");
+      const twelveWinChanceEl = document.querySelector("#twelveWinChance");
+      const totalProbabilityEl = document.querySelector("#totalProbability");
+      const currentUrlEl = document.querySelector("#currentUrl");
+      const copyLink = document.querySelector("#copyLink");
+
+      function combination(n, r) {
+        if (r < 0 || r > n) return 0;
+        const smallR = Math.min(r, n - r);
+        let result = 1;
+
+        for (let i = 1; i <= smallR; i += 1) {
+          result = (result * (n - smallR + i)) / i;
+        }
+
+        return result;
+      }
+
+      function clampRate(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 0;
+        return Math.min(100, Math.max(0, numeric));
+      }
+
+      function getInitialRate() {
+        const params = new URLSearchParams(window.location.search);
+        const raw = params.get("p") ?? params.get("winRate") ?? params.get("rate");
+
+        if (raw === null) return 50;
+
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) return 50;
+
+        return clampRate(parsed <= 1 ? parsed * 100 : parsed);
+      }
+
+      function computeDistribution(ratePercent) {
+        const p = ratePercent / 100;
+        const q = 1 - p;
+        const outcomes = [];
+
+        for (let wins = 0; wins <= 11; wins += 1) {
+          const losses = 3;
+          outcomes.push({
+            label: `${wins}胜${losses}负`,
+            wins,
+            losses,
+            terminal: "loss",
+            probability: combination(wins + 2, 2) * p ** wins * q ** 3,
+          });
+        }
+
+        for (let losses = 2; losses >= 0; losses -= 1) {
+          const wins = 12;
+          outcomes.push({
+            label: `${wins}胜${losses}负`,
+            wins,
+            losses,
+            terminal: "win",
+            probability: combination(11 + losses, losses) * p ** 12 * q ** losses,
+          });
+        }
+
+        return outcomes;
+      }
+
+      function formatPercent(value, digits = 4) {
+        return `${(value * 100).toFixed(digits)}%`;
+      }
+
+      function formatNumber(value, digits = 4) {
+        const rounded = Math.abs(value) < 0.0000000001 ? 0 : value;
+        return rounded.toFixed(digits);
+      }
+
+      function updateUrl(ratePercent) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("p", (ratePercent / 100).toFixed(4).replace(/0+$/, "").replace(/\.$/, ""));
+        window.history.replaceState({}, "", url);
+        currentUrlEl.textContent = `当前参数 ${url.search}`;
+        currentUrlEl.title = url.href;
+      }
+
+      function render(ratePercent, source = "program") {
+        const rate = clampRate(ratePercent);
+        const outcomes = computeDistribution(rate);
+        const maxProbability = Math.max(...outcomes.map((item) => item.probability), 0);
+        const total = outcomes.reduce((sum, item) => sum + item.probability, 0);
+        const expectedWins = outcomes.reduce((sum, item) => sum + item.probability * item.wins, 0);
+        const expectedLosses = outcomes.reduce((sum, item) => sum + item.probability * item.losses, 0);
+        const expectedNet = expectedWins - expectedLosses;
+        const twelveWinChance = outcomes
+          .filter((item) => item.wins === 12)
+          .reduce((sum, item) => sum + item.probability, 0);
+
+        slider.value = rate;
+        if (source !== "input" || Number(input.value) !== rate) {
+          input.value = rate.toFixed(2);
+        }
+        rateDisplay.textContent = `${rate.toFixed(2)}%`;
+        expectedNetEl.textContent = formatNumber(expectedNet);
+        expectedWinsEl.textContent = formatNumber(expectedWins);
+        expectedLossesEl.textContent = formatNumber(expectedLosses);
+        twelveWinChanceEl.textContent = formatPercent(twelveWinChance);
+        totalProbabilityEl.textContent = `合计 ${formatPercent(total)}`;
+        updateUrl(rate);
+
+        distributionBody.innerHTML = outcomes
+          .map((item) => {
+            const net = item.wins - item.losses;
+            const barWidth = maxProbability > 0 ? (item.probability / maxProbability) * 100 : 0;
+            const badgeText = `${item.wins}胜`;
+
+            return `
+              <tr>
+                <td>
+                  <span class="result-name">
+                    <span class="badge">${badgeText}</span>
+                    ${item.label}
+                  </span>
+                </td>
+                <td>${net > 0 ? "+" : ""}${net}</td>
+                <td class="probability">${formatPercent(item.probability)}</td>
+                <td class="bar-cell">
+                  <div class="bar" aria-label="${item.label} 概率 ${formatPercent(item.probability)}">
+                    <span style="--pct: ${barWidth.toFixed(4)}"></span>
+                  </div>
+                </td>
+              </tr>
+            `;
+          })
+          .join("");
+      }
+
+      function setRate(value, source = "program") {
+        render(clampRate(value), source);
+      }
+
+      slider.addEventListener("input", (event) => setRate(event.target.value, "slider"));
+      input.addEventListener("input", (event) => setRate(event.target.value, "input"));
+      input.addEventListener("blur", (event) => setRate(event.target.value));
+
+      document.querySelectorAll("[data-rate]").forEach((button) => {
+        button.addEventListener("click", () => setRate(button.dataset.rate));
+      });
+
+      copyLink.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          copyLink.textContent = "已复制";
+          window.setTimeout(() => {
+            copyLink.textContent = "复制当前链接";
+          }, 1200);
+        } catch {
+          copyLink.textContent = "复制失败";
+          window.setTimeout(() => {
+            copyLink.textContent = "复制当前链接";
+          }, 1200);
+        }
+      });
+
+      render(getInitialRate());
+    </script>
+  </body>
+</html>
