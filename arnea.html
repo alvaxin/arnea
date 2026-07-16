@@ -617,7 +617,7 @@
           </div>
 
           <div class="source-row">
-            <button class="load-class-rates" type="button" id="loadClassRates">查看所有职业净胜场</button>
+            <button class="load-class-rates" type="button" id="loadClassRates" onclick="loadClassRates()">查看所有职业净胜场</button>
             <a class="source-link" href="https://hsreplay.net/arena/" target="_blank" rel="noreferrer">数据来源：HSReplay</a>
           </div>
         </section>
@@ -802,8 +802,6 @@
         currentUrlEl.title = url.href;
       }
 
-      function render(ratePercent, source = "program") {
-
       function computeClassMetrics(ratePercent) {
         const outcomes = computeDistribution(ratePercent);
         const expectedWins = outcomes.reduce((sum, item) => sum + item.probability * item.wins, 0);
@@ -884,6 +882,8 @@
         }
       }
 
+      function render(ratePercent, source = "program") {
+
         const rate = clampRate(ratePercent);
         const outcomes = computeDistribution(rate);
         const maxProbability = Math.max(...outcomes.map((item) => item.probability), 0);
@@ -961,9 +961,11 @@
         }
       });
 
-      render(getInitialRate());
-
+      window.loadClassRates = loadClassRates;
+      loadClassRatesButton.onclick = loadClassRates;
       loadClassRatesButton.addEventListener("click", loadClassRates);
+
+      render(getInitialRate());
 
     </script>
   </body>
