@@ -199,6 +199,113 @@
         background: var(--teal-soft);
       }
 
+      .source-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .load-class-rates {
+        min-width: 0;
+        min-height: 38px;
+        border: 1px solid var(--teal);
+        border-radius: 6px;
+        padding: 0 14px;
+        color: #fff;
+        background: var(--teal);
+        cursor: pointer;
+        font-weight: 800;
+      }
+
+      .load-class-rates:hover {
+        background: #066a75;
+      }
+
+      .load-class-rates:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      .source-link {
+        color: var(--teal);
+        font-size: 0.84rem;
+        white-space: nowrap;
+      }
+
+      .class-rates-panel {
+        margin-bottom: 20px;
+      }
+
+      .class-rates-intro {
+        margin: 0;
+        padding: 14px 20px 0;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.55;
+      }
+
+      .class-rates-status {
+        min-height: 22px;
+        padding: 12px 20px 0;
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .class-rates-status.error {
+        color: #a33a3a;
+      }
+
+      .class-rates-status.success {
+        color: var(--green);
+      }
+
+      .class-rates-wrap {
+        width: 100%;
+        overflow-x: auto;
+      }
+
+      .class-rates {
+        width: 100%;
+        min-width: 620px;
+        border-collapse: collapse;
+      }
+
+      .class-rates th,
+      .class-rates td {
+        padding: 12px 20px;
+        border-bottom: 1px solid #edf0f5;
+        text-align: right;
+        vertical-align: middle;
+      }
+
+      .class-rates th:first-child,
+      .class-rates td:first-child,
+      .class-rates th:nth-child(2),
+      .class-rates td:nth-child(2) {
+        text-align: left;
+      }
+
+      .class-rates tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .class-rates-rank {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .class-rates-name {
+        font-weight: 800;
+      }
+
+      .class-rates-net {
+        color: var(--green);
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+
+
       .copy-row {
         display: grid;
         grid-template-columns: auto minmax(0, 1fr);
@@ -427,6 +534,15 @@
           width: 100%;
         }
 
+        .source-row {
+          grid-template-columns: 1fr;
+        }
+
+        .source-link {
+          white-space: normal;
+        }
+
+
         .control-head {
           grid-template-columns: 1fr;
           gap: 8px;
@@ -499,6 +615,11 @@
             <button class="copy-link" type="button" id="copyLink">复制当前链接</button>
             <span class="current-url" id="currentUrl"></span>
           </div>
+
+          <div class="source-row">
+            <button class="load-class-rates" type="button" id="loadClassRates">查看所有职业净胜场</button>
+            <a class="source-link" href="https://hsreplay.net/arena/" target="_blank" rel="noreferrer">数据来源：HSReplay</a>
+          </div>
         </section>
       </section>
 
@@ -526,6 +647,30 @@
       </section>
 
       <section class="main-grid">
+
+      <section class="table-panel class-rates-panel" id="classRatesPanel" hidden aria-labelledby="classRatesTitle">
+        <div class="panel-head">
+          <h2 id="classRatesTitle">当前版本职业净胜场</h2>
+          <span class="total-prob" id="classRatesUpdated">尚未读取</span>
+        </div>
+        <p class="class-rates-intro">职业胜率来自 HSReplay 当前 Arena 页面；净胜场期望按左侧胜率和本页的“3负结束、最多12胜”规则计算。</p>
+        <div class="class-rates-status" id="classRatesStatus" role="status" aria-live="polite"></div>
+        <div class="class-rates-wrap">
+          <table class="class-rates">
+            <thead>
+              <tr>
+                <th scope="col">排名</th>
+                <th scope="col">职业</th>
+                <th scope="col">HSReplay 胜率</th>
+                <th scope="col">净胜场期望</th>
+                <th scope="col">12胜概率</th>
+              </tr>
+            </thead>
+            <tbody id="classRatesBody"></tbody>
+          </table>
+        </div>
+      </section>
+
         <section class="table-panel" aria-labelledby="table-title">
           <div class="panel-head">
             <h2 id="table-title">结果概率分布</h2>
@@ -558,6 +703,27 @@
       const totalProbabilityEl = document.querySelector("#totalProbability");
       const currentUrlEl = document.querySelector("#currentUrl");
       const copyLink = document.querySelector("#copyLink");
+
+      const loadClassRatesButton = document.querySelector("#loadClassRates");
+      const classRatesPanel = document.querySelector("#classRatesPanel");
+      const classRatesBody = document.querySelector("#classRatesBody");
+      const classRatesStatus = document.querySelector("#classRatesStatus");
+      const classRatesUpdated = document.querySelector("#classRatesUpdated");
+      const HSREPLAY_SOURCE_URL = "https://hsreplay.net/arena/";
+      const HSREPLAY_READER_URL = "https://r.jina.ai/http://hsreplay.net/arena/";
+      const classNameMap = Object.freeze({
+        Paladin: "圣骑士",
+        Hunter: "猎人",
+        Mage: "法师",
+        Priest: "牧师",
+        "Death Knight": "死亡骑士",
+        "Demon Hunter": "恶魔猎手",
+        Shaman: "萨满祭司",
+        Warlock: "术士",
+        Rogue: "潜行者",
+        Druid: "德鲁伊",
+        Warrior: "战士",
+      });
 
       function combination(n, r) {
         if (r < 0 || r > n) return 0;
@@ -637,6 +803,87 @@
       }
 
       function render(ratePercent, source = "program") {
+
+      function computeClassMetrics(ratePercent) {
+        const outcomes = computeDistribution(ratePercent);
+        const expectedWins = outcomes.reduce((sum, item) => sum + item.probability * item.wins, 0);
+        const expectedLosses = outcomes.reduce((sum, item) => sum + item.probability * item.losses, 0);
+        const expectedNet = expectedWins - expectedLosses;
+        const twelveWinChance = outcomes
+          .filter((item) => item.wins === 12)
+          .reduce((sum, item) => sum + item.probability, 0);
+
+        return { expectedNet, twelveWinChance };
+      }
+
+      function parseHsReplayClassRates(text) {
+        const pattern = /#(\d+)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(\d+(?:\.\d+)?)%/g;
+        const rates = [];
+        let match;
+
+        while ((match = pattern.exec(text)) !== null) {
+          const englishName = match[2].trim();
+          if (!classNameMap[englishName]) continue;
+
+          rates.push({
+            rank: Number(match[1]),
+            englishName,
+            name: classNameMap[englishName],
+            winRate: Number(match[3]),
+          });
+        }
+
+        return Array.from(new Map(rates.map((item) => [item.englishName, item])).values())
+          .sort((a, b) => a.rank - b.rank);
+      }
+
+      async function loadClassRates() {
+        classRatesPanel.hidden = false;
+        classRatesBody.innerHTML = "";
+        classRatesUpdated.textContent = "读取中";
+        classRatesStatus.className = "class-rates-status";
+        classRatesStatus.textContent = "正在读取 HSReplay 当前页面...";
+        loadClassRatesButton.disabled = true;
+
+        try {
+          const response = await fetch(HSREPLAY_READER_URL, { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error("HTTP " + response.status);
+          }
+
+          const text = await response.text();
+          const rates = parseHsReplayClassRates(text);
+          if (rates.length < 9) {
+            throw new Error("未找到完整职业数据");
+          }
+
+          classRatesBody.innerHTML = rates
+            .map((item) => {
+              const metrics = computeClassMetrics(item.winRate);
+              return "<tr>" +
+                "<td class=\"class-rates-rank\">#" + item.rank + "</td>" +
+                "<td class=\"class-rates-name\">" + item.name + "</td>" +
+                "<td class=\"probability\">" + item.winRate.toFixed(1) + "%</td>" +
+                "<td class=\"class-rates-net\">" + formatNumber(metrics.expectedNet) + "</td>" +
+                "<td class=\"probability\">" + formatPercent(metrics.twelveWinChance) + "</td>" +
+                "</tr>";
+            })
+            .join("");
+
+          classRatesUpdated.textContent = "读取于 " + new Date().toLocaleString("zh-CN");
+          classRatesStatus.className = "class-rates-status success";
+          classRatesStatus.textContent = "已读取 " + rates.length + " 个职业。";
+        } catch (error) {
+          classRatesUpdated.textContent = "读取失败";
+          classRatesStatus.className = "class-rates-status error";
+          classRatesStatus.innerHTML =
+            "暂时无法读取 HSReplay 当前数据，请稍后重试或直接打开 " +
+            "<a href=\"" + HSREPLAY_SOURCE_URL + "\" target=\"_blank\" rel=\"noreferrer\">HSReplay Arena 页面</a> 查看。";
+        } finally {
+          loadClassRatesButton.disabled = false;
+        }
+      }
+
         const rate = clampRate(ratePercent);
         const outcomes = computeDistribution(rate);
         const maxProbability = Math.max(...outcomes.map((item) => item.probability), 0);
@@ -715,6 +962,9 @@
       });
 
       render(getInitialRate());
+
+      loadClassRatesButton.addEventListener("click", loadClassRates);
+
     </script>
   </body>
 </html>
