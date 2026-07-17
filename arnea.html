@@ -235,6 +235,54 @@
 
       .class-rates-panel {
         margin-bottom: 20px;
+        color: #f3f6f9;
+        background: #263240;
+        border-color: #3f4f60;
+      }
+
+      .class-rates-panel .panel-head {
+        border-bottom-color: #3f4f60;
+      }
+
+      .class-rates-panel h2 {
+        color: #f7fafc;
+      }
+
+      .class-rates-panel .class-rates-intro,
+      .class-rates-panel .class-rates-status {
+        color: #c4cfda;
+      }
+
+      .class-rates-panel .class-rates-status.error {
+        color: #ff9b9b;
+      }
+
+      .class-rates-panel .class-rates-status.success {
+        color: #8be0a4;
+      }
+
+      .class-rates-panel .class-rates th,
+      .class-rates-panel .class-rates td {
+        border-bottom-color: #3f4f60;
+      }
+
+      .class-rates-panel .class-rates th {
+        color: #c4cfda;
+        background: #2f3d4b;
+      }
+
+      .class-rates-panel .class-rates-net {
+        color: #8be0a4;
+      }
+
+      .class-rates-panel .class-rates-delta {
+        color: #ffd27d;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .class-rates-panel .total-prob {
+        color: #c4cfda;
       }
 
       .class-rates-intro {
@@ -267,7 +315,7 @@
 
       .class-rates {
         width: 100%;
-        min-width: 620px;
+        min-width: 760px;
         border-collapse: collapse;
       }
 
@@ -662,8 +710,9 @@
                 <th scope="col">排名</th>
                 <th scope="col">职业</th>
                 <th scope="col">HSReplay 胜率</th>
-                <th scope="col">净胜场期望</th>
                 <th scope="col">12胜概率</th>
+                <th scope="col">净胜场期望</th>
+                <th scope="col">净胜场差</th>
               </tr>
             </thead>
             <tbody id="classRatesBody"></tbody>
@@ -863,15 +912,23 @@
             throw new Error("未找到完整职业数据");
           }
 
-          classRatesBody.innerHTML = rates
+          const classRows = rates.map((item) => ({
+            ...item,
+            metrics: computeClassMetrics(item.winRate),
+          }));
+          const topExpectedNet = classRows[0]?.metrics.expectedNet ?? 0;
+
+          classRatesBody.innerHTML = classRows
             .map((item) => {
-              const metrics = computeClassMetrics(item.winRate);
+              const expectedNet = item.metrics.expectedNet;
+              const netDifference = topExpectedNet - expectedNet;
               return "<tr>" +
                 "<td class=\"class-rates-rank\">#" + item.rank + "</td>" +
                 "<td class=\"class-rates-name\">" + item.name + "</td>" +
                 "<td class=\"probability\">" + item.winRate.toFixed(1) + "%</td>" +
-                "<td class=\"class-rates-net\">" + formatNumber(metrics.expectedNet) + "</td>" +
-                "<td class=\"probability\">" + formatPercent(metrics.twelveWinChance) + "</td>" +
+                "<td class=\"probability\">" + formatPercent(item.metrics.twelveWinChance) + "</td>" +
+                "<td class=\"class-rates-net\">" + formatNumber(expectedNet, 2) + "</td>" +
+                "<td class=\"class-rates-delta\">" + formatNumber(netDifference, 2) + "</td>" +
                 "</tr>";
             })
             .join("");
