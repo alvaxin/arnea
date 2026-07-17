@@ -710,7 +710,7 @@
       const classRatesStatus = document.querySelector("#classRatesStatus");
       const classRatesUpdated = document.querySelector("#classRatesUpdated");
       const HSREPLAY_SOURCE_URL = "https://hsreplay.net/arena/";
-      const HSREPLAY_FETCH_URL = HSREPLAY_SOURCE_URL;
+      const HSREPLAY_FETCH_URL = "./arena-rates.json";
       const classNameMap = Object.freeze({
         Paladin: "圣骑士",
         Hunter: "猎人",
@@ -827,28 +827,18 @@
         return { expectedNet, twelveWinChance };
       }
 
-      function parseHsReplayClassRates(markup) {
-        const sourceText = new DOMParser()
-          .parseFromString(markup, "text/html")
-          .body?.textContent || markup;
-        const pattern = /#(\d+)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?|[\u4e00-\u9fff·]+)\s+(\d+(?:\.\d+)?)%/g;
-        const rates = [];
-        let match;
+      function parseHsReplayClassRates(payloadText) {
+        const payload = JSON.parse(payloadText);
+        const rates = Array.isArray(payload.rates) ? payload.rates : [];
 
-        while ((match = pattern.exec(sourceText)) !== null) {
-          const rawName = match[2].trim();
-          const englishName = classNameMap[rawName] ? rawName : chineseClassNameMap[rawName];
-          if (!englishName) continue;
-
-          rates.push({
-            rank: Number(match[1]),
-            englishName,
-            name: classNameMap[englishName],
-            winRate: Number(match[3]),
-          });
-        }
-
-        return Array.from(new Map(rates.map((item) => [item.englishName, item])).values())
+        return rates
+          .filter((item) => classNameMap[item.englishName] && Number.isFinite(Number(item.winRate)))
+          .map((item) => ({
+            rank: Number(item.rank),
+            englishName: item.englishName,
+            name: classNameMap[item.englishName],
+            winRate: Number(item.winRate),
+          }))
           .sort((a, b) => a.rank - b.rank);
       }
 
@@ -857,7 +847,7 @@
         classRatesBody.innerHTML = "";
         classRatesUpdated.textContent = "读取中";
         classRatesStatus.className = "class-rates-status";
-        classRatesStatus.textContent = "正在读取 HSReplay 原站当前页面...";
+        classRatesStatus.textContent = "正在读取 HSReplay 原站同步数据...";
         loadClassRatesButton.disabled = true;
 
         try {
@@ -867,6 +857,7 @@
           }
 
           const text = await response.text();
+          const payload = JSON.parse(text);
           const rates = parseHsReplayClassRates(text);
           if (rates.length < 9) {
             throw new Error("未找到完整职业数据");
@@ -885,14 +876,14 @@
             })
             .join("");
 
-          classRatesUpdated.textContent = "读取于 " + new Date().toLocaleString("zh-CN");
+          classRatesUpdated.textContent = payload.updatedAt ? "同步于 " + new Date(payload.updatedAt).toLocaleString("zh-CN") : "同步数据";
           classRatesStatus.className = "class-rates-status success";
           classRatesStatus.textContent = "已读取 " + rates.length + " 个职业。";
         } catch (error) {
           classRatesUpdated.textContent = "读取失败";
           classRatesStatus.className = "class-rates-status error";
           classRatesStatus.innerHTML =
-            "暂时无法读取 HSReplay 当前数据，请稍后重试或直接打开 " +
+            "暂时无法读取 HSReplay 同步数据，请稍后重试或直接打开 " +
             "<a href=\"" + HSREPLAY_SOURCE_URL + "\" target=\"_blank\" rel=\"noreferrer\">HSReplay Arena 页面</a> 查看。";
         } finally {
           loadClassRatesButton.disabled = false;
