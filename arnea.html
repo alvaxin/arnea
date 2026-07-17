@@ -710,7 +710,7 @@
       const classRatesStatus = document.querySelector("#classRatesStatus");
       const classRatesUpdated = document.querySelector("#classRatesUpdated");
       const HSREPLAY_SOURCE_URL = "https://hsreplay.net/arena/";
-      const HSREPLAY_READER_URL = "https://r.jina.ai/http://hsreplay.net/arena/";
+      const HSREPLAY_FETCH_URL = HSREPLAY_SOURCE_URL;
       const classNameMap = Object.freeze({
         Paladin: "圣骑士",
         Hunter: "猎人",
@@ -723,6 +723,19 @@
         Rogue: "潜行者",
         Druid: "德鲁伊",
         Warrior: "战士",
+      });
+      const chineseClassNameMap = Object.freeze({
+        "圣骑士": "Paladin",
+        "猎人": "Hunter",
+        "法师": "Mage",
+        "牧师": "Priest",
+        "死亡骑士": "Death Knight",
+        "恶魔猎手": "Demon Hunter",
+        "萨满祭司": "Shaman",
+        "术士": "Warlock",
+        "潜行者": "Rogue",
+        "德鲁伊": "Druid",
+        "战士": "Warrior",
       });
 
       function combination(n, r) {
@@ -814,14 +827,18 @@
         return { expectedNet, twelveWinChance };
       }
 
-      function parseHsReplayClassRates(text) {
-        const pattern = /#(\d+)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+(\d+(?:\.\d+)?)%/g;
+      function parseHsReplayClassRates(markup) {
+        const sourceText = new DOMParser()
+          .parseFromString(markup, "text/html")
+          .body?.textContent || markup;
+        const pattern = /#(\d+)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?|[\u4e00-\u9fff·]+)\s+(\d+(?:\.\d+)?)%/g;
         const rates = [];
         let match;
 
-        while ((match = pattern.exec(text)) !== null) {
-          const englishName = match[2].trim();
-          if (!classNameMap[englishName]) continue;
+        while ((match = pattern.exec(sourceText)) !== null) {
+          const rawName = match[2].trim();
+          const englishName = classNameMap[rawName] ? rawName : chineseClassNameMap[rawName];
+          if (!englishName) continue;
 
           rates.push({
             rank: Number(match[1]),
@@ -840,11 +857,11 @@
         classRatesBody.innerHTML = "";
         classRatesUpdated.textContent = "读取中";
         classRatesStatus.className = "class-rates-status";
-        classRatesStatus.textContent = "正在读取 HSReplay 当前页面...";
+        classRatesStatus.textContent = "正在读取 HSReplay 原站当前页面...";
         loadClassRatesButton.disabled = true;
 
         try {
-          const response = await fetch(HSREPLAY_READER_URL, { cache: "no-store" });
+          const response = await fetch(HSREPLAY_FETCH_URL, { cache: "no-store", mode: "cors" });
           if (!response.ok) {
             throw new Error("HTTP " + response.status);
           }
