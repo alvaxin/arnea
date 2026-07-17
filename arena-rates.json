@@ -1,0 +1,72 @@
+{
+  "source": "https://hsreplay.net/arena/",
+  "updatedAt": "2026-07-17T16:54:48.474Z",
+  "rates": [
+    {
+      "rank": 1,
+      "englishName": "Paladin",
+      "name": "圣骑士",
+      "winRate": 55
+    },
+    {
+      "rank": 2,
+      "englishName": "Hunter",
+      "name": "猎人",
+      "winRate": 52.9
+    },
+    {
+      "rank": 3,
+      "englishName": "Priest",
+      "name": "牧师",
+      "winRate": 51.3
+    },
+    {
+      "rank": 4,
+      "englishName": "Mage",
+      "name": "法师",
+      "winRate": 51.2
+    },
+    {
+      "rank": 5,
+      "englishName": "Death Knight",
+      "name": "死亡骑士",
+      "winRate": 46.2
+    },
+    {
+      "rank": 6,
+      "englishName": "Demon Hunter",
+      "name": "恶魔猎手",
+      "winRate": 45.9
+    },
+    {
+      "rank": 7,
+      "englishName": "Shaman",
+      "name": "萨满祭司",
+      "winRate": 40.6
+    },
+    {
+      "rank": 8,
+      "englishName": "Warlock",
+      "name": "术士",
+      "winRate": 39.4
+    },
+    {
+      "rank": 9,
+      "englishName": "Rogue",
+      "name": "潜行者",
+      "winRate": 39.2
+    },
+    {
+      "rank": 10,
+      "englishName": "Druid",
+      "name": "德鲁伊",
+      "winRate": 37.8
+    },
+    {
+      "rank": 11,
+      "englishName": "Warrior",
+      "name": "战士",
+      "winRate": 27
+    }
+  ]
+}
