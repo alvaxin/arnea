@@ -760,15 +760,7 @@
       const classRatesUpdated = document.querySelector("#classRatesUpdated");
       const HSREPLAY_SOURCE_URL = "https://hsreplay.net/arena/";
       const HSREPLAY_FETCH_URL = "./arena-rates.json";
-      const HSREPLAY_SOURCE_URLS = [
-        HSREPLAY_SOURCE_URL,
-        "https://r.jina.ai/http://hsreplay.net/arena/",
-        "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(HSREPLAY_SOURCE_URL),
-        "https://api.allorigins.win/raw?url=" + encodeURIComponent(HSREPLAY_SOURCE_URL),
-      ];
       const CLASS_RATES_CACHE_KEY = "arnea-class-rates-cache-v1";
-      const CLASS_RATES_SOURCE_HEALTH_KEY = "arnea-class-rates-source-health-v1";
-      const CLASS_RATES_MIN_REFRESH_MS = 10 * 60 * 1000;
       const CLASS_RATES_REQUEST_TIMEOUT_MS = 7000;
       const classNameMap = Object.freeze({
         Paladin: "圣骑士",
@@ -911,6 +903,11 @@
           return parseCachedClassRates(payloadText).rates;
         } catch {
           const document = new DOMParser().parseFromString(payloadText, "text/html");
+          const tierHeading = Array.from(document.querySelectorAll("h1, h2, h3")).find((heading) =>
+            /竞技模式职业梯队列表|Arena Class Tier List/i.test(heading.textContent || "")
+          );
+          if (!tierHeading) return [];
+
           const linkedClassRows = Array.from(
             document.querySelectorAll("a[href*='playerClass']")
           ).map((link) => link.textContent || "");
@@ -995,50 +992,6 @@
         }
       }
 
-      function readSourceHealth() {
-        try {
-          return JSON.parse(localStorage.getItem(CLASS_RATES_SOURCE_HEALTH_KEY) || "{}");
-        } catch {
-          return {};
-        }
-      }
-
-      function writeSourceHealth(health) {
-        try {
-          localStorage.setItem(CLASS_RATES_SOURCE_HEALTH_KEY, JSON.stringify(health));
-        } catch {
-          // Source health is only an optimization; syncing still works without storage.
-        }
-      }
-
-      function markSourceFailure(url) {
-        const health = readSourceHealth();
-        const previous = health[url] || { failures: 0 };
-        const failures = Math.min(previous.failures + 1, 6);
-        health[url] = {
-          failures,
-          retryAt: Date.now() + Math.min(30000 * 2 ** (failures - 1), 30 * 60 * 1000),
-        };
-        writeSourceHealth(health);
-      }
-
-      function markSourceSuccess(url) {
-        const health = readSourceHealth();
-        delete health[url];
-        writeSourceHealth(health);
-      }
-
-      function getAvailableSourceUrls() {
-        const health = readSourceHealth();
-        const available = HSREPLAY_SOURCE_URLS.filter((url) => !health[url] || health[url].retryAt <= Date.now());
-        return available.length ? available : HSREPLAY_SOURCE_URLS;
-      }
-
-      function isRecentClassRates(updatedAt) {
-        const timestamp = new Date(updatedAt || 0).getTime();
-        return Number.isFinite(timestamp) && Date.now() - timestamp < CLASS_RATES_MIN_REFRESH_MS;
-      }
-
       async function readFallbackClassRates() {
         const localRates = readLocalClassRates();
         if (localRates) return localRates;
@@ -1052,40 +1005,21 @@
       }
 
       async function fetchHsReplayClassRates() {
-        let lastError = new Error("无法读取 HSReplay 页面");
-        const attempts = getAvailableSourceUrls().map(async (url) => {
-          try {
-            const response = await fetchWithTimeout(
-              url,
-              { cache: "no-store", mode: "cors" },
-              CLASS_RATES_REQUEST_TIMEOUT_MS
-            );
-            if (!response.ok) {
-              throw new Error("HTTP " + response.status);
-            }
-
-            const rates = parseHsReplayClassRates(await response.text());
-            if (rates.length < 9) {
-              throw new Error("页面中未找到完整职业数据");
-            }
-
-            markSourceSuccess(url);
-            return {
-              rates,
-              source: url === HSREPLAY_SOURCE_URL ? "HSReplay 原站页面" : "HSReplay 页面内容读取通道",
-            };
-          } catch (error) {
-            markSourceFailure(url);
-            lastError = error;
-            throw error;
-          }
-        });
-
-        try {
-          return await Promise.any(attempts);
-        } catch {
-          throw lastError;
+        const response = await fetchWithTimeout(
+          HSREPLAY_SOURCE_URL,
+          { cache: "no-store", mode: "cors" },
+          CLASS_RATES_REQUEST_TIMEOUT_MS
+        );
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
         }
+
+        const rates = parseHsReplayClassRates(await response.text());
+        if (rates.length < 9) {
+          throw new Error("未找到完整的竞技模式职业梯队列表");
+        }
+
+        return { rates, source: "HSReplay 原站页面" };
       }
 
       async function loadClassRates() {
@@ -1104,13 +1038,7 @@
 
         if (fallback) {
           renderClassRates(fallback.rates, fallback.updatedAt);
-          if (isRecentClassRates(fallback.updatedAt)) {
-            classRatesStatus.className = "class-rates-status success";
-            classRatesStatus.textContent = "使用最近同步数据（" + formatSyncTime(fallback.updatedAt) + "）。";
-            loadClassRatesButton.disabled = false;
-            return;
-          }
-          classRatesStatus.textContent = "已显示上次数据，正在尝试更新...";
+          classRatesStatus.textContent = "已显示上次数据，正在直连 HSReplay 原站更新...";
         } else {
           classRatesBody.innerHTML = "";
         }
@@ -1126,7 +1054,7 @@
           if (fallback) {
             renderClassRates(fallback.rates, fallback.updatedAt);
             classRatesStatus.className = "class-rates-status error";
-            classRatesStatus.textContent = "本次同步失败，继续显示上次数据（" + formatSyncTime(fallback.updatedAt) + "）。";
+            classRatesStatus.textContent = "本次直连同步失败，继续显示上次数据（" + formatSyncTime(fallback.updatedAt) + "）。";
           } else {
             classRatesUpdated.textContent = "读取失败";
             classRatesStatus.className = "class-rates-status error";
