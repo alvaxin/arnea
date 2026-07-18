@@ -760,6 +760,7 @@
       const classRatesUpdated = document.querySelector("#classRatesUpdated");
       const HSREPLAY_SOURCE_URL = "https://hsreplay.net/arena/";
       const HSREPLAY_FETCH_URL = "./arena-rates.json";
+      const HSREPLAY_SYNC_API_URL = "https://arnea-hsreplay-sync.meteor-dryer.workers.dev/arena-rates";
       const CLASS_RATES_CACHE_KEY = "arnea-class-rates-cache-v1";
       const CLASS_RATES_REQUEST_TIMEOUT_MS = 7000;
       const classNameMap = Object.freeze({
@@ -1006,7 +1007,7 @@
 
       async function fetchHsReplayClassRates() {
         const response = await fetchWithTimeout(
-          HSREPLAY_SOURCE_URL,
+          HSREPLAY_SYNC_API_URL,
           { cache: "no-store", mode: "cors" },
           CLASS_RATES_REQUEST_TIMEOUT_MS
         );
@@ -1014,12 +1015,16 @@
           throw new Error("HTTP " + response.status);
         }
 
-        const rates = parseHsReplayClassRates(await response.text());
-        if (rates.length < 9) {
-          throw new Error("未找到完整的竞技模式职业梯队列表");
+        const payload = parseCachedClassRates(await response.text());
+        if (payload.rates.length < 9) {
+          throw new Error("同步接口未返回完整的竞技模式职业梯队列表");
         }
 
-        return { rates, source: "HSReplay 原站页面" };
+        return {
+          rates: payload.rates,
+          updatedAt: payload.updatedAt,
+          source: "自有同步接口（HSReplay 原站）",
+        };
       }
 
       async function loadClassRates() {
@@ -1045,7 +1050,7 @@
 
         try {
           const synced = await fetchHsReplayClassRates();
-          const updatedAt = new Date().toISOString();
+          const updatedAt = synced.updatedAt || new Date().toISOString();
           renderClassRates(synced.rates, updatedAt);
           saveLocalClassRates(synced.rates, updatedAt);
           classRatesStatus.className = "class-rates-status success";
