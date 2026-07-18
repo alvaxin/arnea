@@ -767,6 +767,9 @@
         "https://api.allorigins.win/raw?url=" + encodeURIComponent(HSREPLAY_SOURCE_URL),
       ];
       const CLASS_RATES_CACHE_KEY = "arnea-class-rates-cache-v1";
+      const CLASS_RATES_SOURCE_HEALTH_KEY = "arnea-class-rates-source-health-v1";
+      const CLASS_RATES_MIN_REFRESH_MS = 10 * 60 * 1000;
+      const CLASS_RATES_REQUEST_TIMEOUT_MS = 7000;
       const classNameMap = Object.freeze({
         Paladin: "圣骑士",
         Hunter: "猎人",
@@ -907,23 +910,27 @@
         try {
           return parseCachedClassRates(payloadText).rates;
         } catch {
-          const pageText = new DOMParser()
-            .parseFromString(payloadText, "text/html")
-            .body.textContent.replace(/\s+/g, " ");
-          const pattern = /#(\d+)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?|[\u4e00-\u9fff·]+)\s+(\d+(?:\.\d+)?)%/g;
-          const rates = [];
+          const document = new DOMParser().parseFromString(payloadText, "text/html");
+          const linkedClassRows = Array.from(
+            document.querySelectorAll("a[href*='playerClass']")
+          ).map((link) => link.textContent || "");
+          const bodyText = (document.body?.textContent || "").replace(/\s+/g, " ");
+          const pageText = linkedClassRows.concat(bodyText).join(" ");
+          const pattern = /#\s*(\d{1,2})\s+([A-Za-z]+(?:\s+[A-Za-z]+)?|[\u4e00-\u9fff·]+)\s+(\d+(?:\.\d+)?)\s*%/g;
+          const ratesByClass = new Map();
           let match;
 
           while ((match = pattern.exec(pageText)) !== null) {
             const rank = Number(match[1]);
             const rawName = match[2];
             const englishName = classNameMap[rawName] ? rawName : chineseClassNameMap[rawName];
-            if (englishName) {
-              rates.push({ rank, englishName, winRate: Number(match[3]) });
+            const winRate = Number(match[3]);
+            if (englishName && winRate >= 0 && winRate <= 100 && !ratesByClass.has(englishName)) {
+              ratesByClass.set(englishName, { rank, englishName, winRate });
             }
           }
 
-          return normalizeClassRates(rates);
+          return normalizeClassRates(Array.from(ratesByClass.values()));
         }
       }
 
@@ -988,6 +995,50 @@
         }
       }
 
+      function readSourceHealth() {
+        try {
+          return JSON.parse(localStorage.getItem(CLASS_RATES_SOURCE_HEALTH_KEY) || "{}");
+        } catch {
+          return {};
+        }
+      }
+
+      function writeSourceHealth(health) {
+        try {
+          localStorage.setItem(CLASS_RATES_SOURCE_HEALTH_KEY, JSON.stringify(health));
+        } catch {
+          // Source health is only an optimization; syncing still works without storage.
+        }
+      }
+
+      function markSourceFailure(url) {
+        const health = readSourceHealth();
+        const previous = health[url] || { failures: 0 };
+        const failures = Math.min(previous.failures + 1, 6);
+        health[url] = {
+          failures,
+          retryAt: Date.now() + Math.min(30000 * 2 ** (failures - 1), 30 * 60 * 1000),
+        };
+        writeSourceHealth(health);
+      }
+
+      function markSourceSuccess(url) {
+        const health = readSourceHealth();
+        delete health[url];
+        writeSourceHealth(health);
+      }
+
+      function getAvailableSourceUrls() {
+        const health = readSourceHealth();
+        const available = HSREPLAY_SOURCE_URLS.filter((url) => !health[url] || health[url].retryAt <= Date.now());
+        return available.length ? available : HSREPLAY_SOURCE_URLS;
+      }
+
+      function isRecentClassRates(updatedAt) {
+        const timestamp = new Date(updatedAt || 0).getTime();
+        return Number.isFinite(timestamp) && Date.now() - timestamp < CLASS_RATES_MIN_REFRESH_MS;
+      }
+
       async function readFallbackClassRates() {
         const localRates = readLocalClassRates();
         if (localRates) return localRates;
@@ -1002,37 +1053,46 @@
 
       async function fetchHsReplayClassRates() {
         let lastError = new Error("无法读取 HSReplay 页面");
-
-        for (const url of HSREPLAY_SOURCE_URLS) {
+        const attempts = getAvailableSourceUrls().map(async (url) => {
           try {
-            const response = await fetchWithTimeout(url, { cache: "no-store", mode: "cors" }, 9000);
+            const response = await fetchWithTimeout(
+              url,
+              { cache: "no-store", mode: "cors" },
+              CLASS_RATES_REQUEST_TIMEOUT_MS
+            );
             if (!response.ok) {
               throw new Error("HTTP " + response.status);
             }
 
             const rates = parseHsReplayClassRates(await response.text());
-            if (rates.length >= 9) {
-              return {
-                rates,
-                source: url === HSREPLAY_SOURCE_URL ? "HSReplay 原站页面" : "HSReplay 页面内容读取通道",
-              };
+            if (rates.length < 9) {
+              throw new Error("页面中未找到完整职业数据");
             }
 
-            throw new Error("页面中未找到完整职业数据");
+            markSourceSuccess(url);
+            return {
+              rates,
+              source: url === HSREPLAY_SOURCE_URL ? "HSReplay 原站页面" : "HSReplay 页面内容读取通道",
+            };
           } catch (error) {
+            markSourceFailure(url);
             lastError = error;
+            throw error;
           }
-        }
+        });
 
-        throw lastError;
+        try {
+          return await Promise.any(attempts);
+        } catch {
+          throw lastError;
+        }
       }
 
       async function loadClassRates() {
         classRatesPanel.hidden = false;
-        classRatesBody.innerHTML = "";
         classRatesUpdated.textContent = "尝试同步";
         classRatesStatus.className = "class-rates-status";
-        classRatesStatus.textContent = "正在尝试从 HSReplay 原站同步...";
+        classRatesStatus.textContent = "正在尝试从 HSReplay 页面同步...";
         loadClassRatesButton.disabled = true;
 
         let fallback = null;
@@ -1040,6 +1100,19 @@
           fallback = await readFallbackClassRates();
         } catch {
           fallback = null;
+        }
+
+        if (fallback) {
+          renderClassRates(fallback.rates, fallback.updatedAt);
+          if (isRecentClassRates(fallback.updatedAt)) {
+            classRatesStatus.className = "class-rates-status success";
+            classRatesStatus.textContent = "使用最近同步数据（" + formatSyncTime(fallback.updatedAt) + "）。";
+            loadClassRatesButton.disabled = false;
+            return;
+          }
+          classRatesStatus.textContent = "已显示上次数据，正在尝试更新...";
+        } else {
+          classRatesBody.innerHTML = "";
         }
 
         try {
