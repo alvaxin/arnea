@@ -665,7 +665,7 @@
           </div>
 
           <div class="source-row">
-            <button class="load-class-rates" type="button" id="loadClassRates" onclick="loadClassRates()">查看所有职业净胜场</button>
+            <button class="load-class-rates" type="button" id="loadClassRates">查看所有职业净胜场</button>
             <a class="source-link" href="https://hsreplay.net/arena/" target="_blank" rel="noreferrer">数据来源：HSReplay</a>
           </div>
         </section>
@@ -760,6 +760,7 @@
       const classRatesUpdated = document.querySelector("#classRatesUpdated");
       const HSREPLAY_SOURCE_URL = "https://hsreplay.net/arena/";
       const HSREPLAY_FETCH_URL = "./arena-rates.json";
+      const CLASS_RATES_CACHE_KEY = "arnea-class-rates-cache-v1";
       const classNameMap = Object.freeze({
         Paladin: "圣骑士",
         Hunter: "猎人",
@@ -876,10 +877,7 @@
         return { expectedNet, twelveWinChance };
       }
 
-      function parseHsReplayClassRates(payloadText) {
-        const payload = JSON.parse(payloadText);
-        const rates = Array.isArray(payload.rates) ? payload.rates : [];
-
+      function normalizeClassRates(rates) {
         return rates
           .filter((item) => classNameMap[item.englishName] && Number.isFinite(Number(item.winRate)))
           .map((item) => ({
@@ -891,57 +889,143 @@
           .sort((a, b) => a.rank - b.rank);
       }
 
+      function parseCachedClassRates(payloadText) {
+        const payload = JSON.parse(payloadText);
+        return {
+          rates: normalizeClassRates(Array.isArray(payload.rates) ? payload.rates : []),
+          updatedAt: payload.updatedAt || null,
+        };
+      }
+
+      function parseHsReplayClassRates(payloadText) {
+        try {
+          return parseCachedClassRates(payloadText).rates;
+        } catch {
+          const pageText = new DOMParser()
+            .parseFromString(payloadText, "text/html")
+            .body.textContent.replace(/\s+/g, " ");
+          const pattern = /#(\d+)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?|[\u4e00-\u9fff·]+)\s+(\d+(?:\.\d+)?)%/g;
+          const rates = [];
+          let match;
+
+          while ((match = pattern.exec(pageText)) !== null) {
+            const rank = Number(match[1]);
+            const rawName = match[2];
+            const englishName = classNameMap[rawName] ? rawName : chineseClassNameMap[rawName];
+            if (englishName) {
+              rates.push({ rank, englishName, winRate: Number(match[3]) });
+            }
+          }
+
+          return normalizeClassRates(rates);
+        }
+      }
+
+      function formatSyncTime(updatedAt) {
+        if (!updatedAt) return "同步时间未知";
+        const date = new Date(updatedAt);
+        return Number.isNaN(date.getTime()) ? "同步时间未知" : "同步于 " + date.toLocaleString("zh-CN");
+      }
+
+      function renderClassRates(rates, updatedAt) {
+        const classRows = rates.map((item) => ({
+          ...item,
+          metrics: computeClassMetrics(item.winRate),
+        }));
+        const topExpectedNet = classRows[0]?.metrics.expectedNet ?? 0;
+
+        classRatesBody.innerHTML = classRows
+          .map((item) => {
+            const expectedNet = item.metrics.expectedNet;
+            const netDifference = topExpectedNet - expectedNet;
+            return "<tr>" +
+              "<td class=\"class-rates-rank\">#" + item.rank + "</td>" +
+              "<td class=\"class-rates-name\">" + item.name + "</td>" +
+              "<td class=\"probability\">" + item.winRate.toFixed(1) + "%</td>" +
+              "<td class=\"probability\">" + formatPercent(item.metrics.twelveWinChance) + "</td>" +
+              "<td class=\"class-rates-net\">" + formatNumber(expectedNet, 2) + "</td>" +
+              "<td class=\"class-rates-delta\">" + formatNumber(netDifference, 2) + "</td>" +
+              "</tr>";
+          })
+          .join("");
+
+        classRatesUpdated.textContent = formatSyncTime(updatedAt);
+      }
+
+      function readLocalClassRates() {
+        try {
+          const raw = localStorage.getItem(CLASS_RATES_CACHE_KEY);
+          if (!raw) return null;
+          const cached = parseCachedClassRates(raw);
+          return cached.rates.length >= 9 ? cached : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function saveLocalClassRates(rates, updatedAt) {
+        try {
+          localStorage.setItem(CLASS_RATES_CACHE_KEY, JSON.stringify({ rates, updatedAt }));
+        } catch {
+          // Browser storage may be unavailable; the repository fallback still works.
+        }
+      }
+
+      async function readFallbackClassRates() {
+        const localRates = readLocalClassRates();
+        if (localRates) return localRates;
+
+        const response = await fetch(HSREPLAY_FETCH_URL, { cache: "no-store", mode: "cors" });
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
+        }
+
+        return parseCachedClassRates(await response.text());
+      }
+
       async function loadClassRates() {
         classRatesPanel.hidden = false;
         classRatesBody.innerHTML = "";
-        classRatesUpdated.textContent = "读取中";
+        classRatesUpdated.textContent = "尝试同步";
         classRatesStatus.className = "class-rates-status";
-        classRatesStatus.textContent = "正在读取 HSReplay 原站同步数据...";
+        classRatesStatus.textContent = "正在尝试从 HSReplay 原站同步...";
         loadClassRatesButton.disabled = true;
 
+        let fallback = null;
         try {
-          const response = await fetch(HSREPLAY_FETCH_URL, { cache: "no-store", mode: "cors" });
+          fallback = await readFallbackClassRates();
+        } catch {
+          fallback = null;
+        }
+
+        try {
+          const response = await fetch(HSREPLAY_SOURCE_URL, { cache: "no-store", mode: "cors" });
           if (!response.ok) {
             throw new Error("HTTP " + response.status);
           }
 
-          const text = await response.text();
-          const payload = JSON.parse(text);
-          const rates = parseHsReplayClassRates(text);
+          const rates = parseHsReplayClassRates(await response.text());
           if (rates.length < 9) {
             throw new Error("未找到完整职业数据");
           }
 
-          const classRows = rates.map((item) => ({
-            ...item,
-            metrics: computeClassMetrics(item.winRate),
-          }));
-          const topExpectedNet = classRows[0]?.metrics.expectedNet ?? 0;
-
-          classRatesBody.innerHTML = classRows
-            .map((item) => {
-              const expectedNet = item.metrics.expectedNet;
-              const netDifference = topExpectedNet - expectedNet;
-              return "<tr>" +
-                "<td class=\"class-rates-rank\">#" + item.rank + "</td>" +
-                "<td class=\"class-rates-name\">" + item.name + "</td>" +
-                "<td class=\"probability\">" + item.winRate.toFixed(1) + "%</td>" +
-                "<td class=\"probability\">" + formatPercent(item.metrics.twelveWinChance) + "</td>" +
-                "<td class=\"class-rates-net\">" + formatNumber(expectedNet, 2) + "</td>" +
-                "<td class=\"class-rates-delta\">" + formatNumber(netDifference, 2) + "</td>" +
-                "</tr>";
-            })
-            .join("");
-
-          classRatesUpdated.textContent = payload.updatedAt ? "同步于 " + new Date(payload.updatedAt).toLocaleString("zh-CN") : "同步数据";
+          const updatedAt = new Date().toISOString();
+          renderClassRates(rates, updatedAt);
+          saveLocalClassRates(rates, updatedAt);
           classRatesStatus.className = "class-rates-status success";
-          classRatesStatus.textContent = "已读取 " + rates.length + " 个职业。";
-        } catch (error) {
-          classRatesUpdated.textContent = "读取失败";
-          classRatesStatus.className = "class-rates-status error";
-          classRatesStatus.innerHTML =
-            "暂时无法读取 HSReplay 同步数据，请稍后重试或直接打开 " +
-            "<a href=\"" + HSREPLAY_SOURCE_URL + "\" target=\"_blank\" rel=\"noreferrer\">HSReplay Arena 页面</a> 查看。";
+          classRatesStatus.textContent = "本次已从 HSReplay 同步 " + rates.length + " 个职业。";
+        } catch {
+          if (fallback) {
+            renderClassRates(fallback.rates, fallback.updatedAt);
+            classRatesStatus.className = "class-rates-status error";
+            classRatesStatus.textContent = "本次同步失败，继续显示上次数据（" + formatSyncTime(fallback.updatedAt) + "）。";
+          } else {
+            classRatesUpdated.textContent = "读取失败";
+            classRatesStatus.className = "class-rates-status error";
+            classRatesStatus.innerHTML =
+              "暂时无法同步，也没有可用的历史数据，请直接打开 " +
+              "<a href=\"" + HSREPLAY_SOURCE_URL + "\" target=\"_blank\" rel=\"noreferrer\">HSReplay Arena 页面</a> 查看。";
+          }
         } finally {
           loadClassRatesButton.disabled = false;
         }
@@ -1027,7 +1111,6 @@
       });
 
       window.loadClassRates = loadClassRates;
-      loadClassRatesButton.onclick = loadClassRates;
       loadClassRatesButton.addEventListener("click", loadClassRates);
 
       render(getInitialRate());
