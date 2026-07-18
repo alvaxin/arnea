@@ -760,6 +760,12 @@
       const classRatesUpdated = document.querySelector("#classRatesUpdated");
       const HSREPLAY_SOURCE_URL = "https://hsreplay.net/arena/";
       const HSREPLAY_FETCH_URL = "./arena-rates.json";
+      const HSREPLAY_SOURCE_URLS = [
+        HSREPLAY_SOURCE_URL,
+        "https://r.jina.ai/http://hsreplay.net/arena/",
+        "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(HSREPLAY_SOURCE_URL),
+        "https://api.allorigins.win/raw?url=" + encodeURIComponent(HSREPLAY_SOURCE_URL),
+      ];
       const CLASS_RATES_CACHE_KEY = "arnea-class-rates-cache-v1";
       const classNameMap = Object.freeze({
         Paladin: "圣骑士",
@@ -994,6 +1000,33 @@
         return parseCachedClassRates(await response.text());
       }
 
+      async function fetchHsReplayClassRates() {
+        let lastError = new Error("无法读取 HSReplay 页面");
+
+        for (const url of HSREPLAY_SOURCE_URLS) {
+          try {
+            const response = await fetchWithTimeout(url, { cache: "no-store", mode: "cors" }, 9000);
+            if (!response.ok) {
+              throw new Error("HTTP " + response.status);
+            }
+
+            const rates = parseHsReplayClassRates(await response.text());
+            if (rates.length >= 9) {
+              return {
+                rates,
+                source: url === HSREPLAY_SOURCE_URL ? "HSReplay 原站页面" : "HSReplay 页面内容读取通道",
+              };
+            }
+
+            throw new Error("页面中未找到完整职业数据");
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        throw lastError;
+      }
+
       async function loadClassRates() {
         classRatesPanel.hidden = false;
         classRatesBody.innerHTML = "";
@@ -1010,21 +1043,12 @@
         }
 
         try {
-          const response = await fetchWithTimeout(HSREPLAY_SOURCE_URL, { cache: "no-store", mode: "cors" });
-          if (!response.ok) {
-            throw new Error("HTTP " + response.status);
-          }
-
-          const rates = parseHsReplayClassRates(await response.text());
-          if (rates.length < 9) {
-            throw new Error("未找到完整职业数据");
-          }
-
+          const synced = await fetchHsReplayClassRates();
           const updatedAt = new Date().toISOString();
-          renderClassRates(rates, updatedAt);
-          saveLocalClassRates(rates, updatedAt);
+          renderClassRates(synced.rates, updatedAt);
+          saveLocalClassRates(synced.rates, updatedAt);
           classRatesStatus.className = "class-rates-status success";
-          classRatesStatus.textContent = "本次已从 HSReplay 同步 " + rates.length + " 个职业。";
+          classRatesStatus.textContent = "本次已从 " + synced.source + " 同步 " + synced.rates.length + " 个职业。";
         } catch {
           if (fallback) {
             renderClassRates(fallback.rates, fallback.updatedAt);
