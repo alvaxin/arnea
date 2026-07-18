@@ -971,11 +971,22 @@
         }
       }
 
+      async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+          return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+          window.clearTimeout(timer);
+        }
+      }
+
       async function readFallbackClassRates() {
         const localRates = readLocalClassRates();
         if (localRates) return localRates;
 
-        const response = await fetch(HSREPLAY_FETCH_URL, { cache: "no-store", mode: "cors" });
+        const response = await fetchWithTimeout(HSREPLAY_FETCH_URL, { cache: "no-store", mode: "cors" });
         if (!response.ok) {
           throw new Error("HTTP " + response.status);
         }
@@ -999,7 +1010,7 @@
         }
 
         try {
-          const response = await fetch(HSREPLAY_SOURCE_URL, { cache: "no-store", mode: "cors" });
+          const response = await fetchWithTimeout(HSREPLAY_SOURCE_URL, { cache: "no-store", mode: "cors" });
           if (!response.ok) {
             throw new Error("HTTP " + response.status);
           }
